@@ -1,0 +1,644 @@
+# The workloads behind the routes: echo-basic, the Gateway API project's own
+# test server, which answers every request with what it received.
+#
+# Every Service targets port 3000, where echo-basic listens; gRPC's is marked
+# h2c so the gateway speaks HTTP/2 to it.
+
+---
+# shop/storefront: The shop's web front, version 1.
+apiVersion: v1
+kind: Service
+metadata:
+  name: storefront
+  namespace: shop
+spec:
+  selector:
+    app: storefront
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storefront
+  namespace: shop
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: storefront
+  template:
+    metadata:
+      labels:
+        app: storefront
+        version: v1
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+# shop/storefront-canary: Version 2, taking a tenth of /api through the weight split.
+apiVersion: v1
+kind: Service
+metadata:
+  name: storefront-canary
+  namespace: shop
+spec:
+  selector:
+    app: storefront-canary
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storefront-canary
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: storefront-canary
+  template:
+    metadata:
+      labels:
+        app: storefront-canary
+        version: v2
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart
+  namespace: shop
+spec:
+  selector:
+    app: cart
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cart
+  template:
+    metadata:
+      labels:
+        app: cart
+        version: v1
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+# shop/checkout: A gRPC server: echo-basic with GRPC_ECHO_SERVER set.
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkout
+  namespace: shop
+spec:
+  selector:
+    app: checkout
+  ports:
+    - name: grpc
+      port: 8080
+      targetPort: 3000
+      appProtocol: kubernetes.io/h2c
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+        version: v1
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: GRPC_ECHO_SERVER
+              value: "1"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+# shop/search: Scaled to zero on purpose: the route to it resolves, and nothing answers.
+apiVersion: v1
+kind: Service
+metadata:
+  name: search
+  namespace: shop
+spec:
+  selector:
+    app: search
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search
+  namespace: shop
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: search
+  template:
+    metadata:
+      labels:
+        app: search
+        version: v1
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+# shop/db: Behind the TLS passthrough listener. echo-basic does not speak TLS; the route is what matters here.
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: shop
+spec:
+  selector:
+    app: db
+  ports:
+    - name: tcp
+      port: 5432
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+        version: v1
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+# shop/cache: Behind the TCP listener.
+apiVersion: v1
+kind: Service
+metadata:
+  name: cache
+  namespace: shop
+spec:
+  selector:
+    app: cache
+  ports:
+    - name: tcp
+      port: 6379
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache
+  namespace: shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cache
+  template:
+    metadata:
+      labels:
+        app: cache
+        version: v1
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+# payments/payments-api: In another namespace, with a ReferenceGrant letting shop's routes in.
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments-api
+  namespace: payments
+spec:
+  selector:
+    app: payments-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+  namespace: payments
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payments-api
+  template:
+    metadata:
+      labels:
+        app: payments-api
+        version: v1
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+# billing/billing-api: In another namespace, with no ReferenceGrant: the route to it is refused.
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-api
+  namespace: billing
+spec:
+  selector:
+    app: billing-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-api
+  namespace: billing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-api
+  template:
+    metadata:
+      labels:
+        app: billing-api
+        version: v1
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: blog
+  namespace: team-blog
+spec:
+  selector:
+    app: blog
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blog
+  namespace: team-blog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: blog
+  template:
+    metadata:
+      labels:
+        app: blog
+        version: v1
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+# team-blog/apps-landing: What any other *.apps.example.com host lands on.
+apiVersion: v1
+kind: Service
+metadata:
+  name: apps-landing
+  namespace: team-blog
+spec:
+  selector:
+    app: apps-landing
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apps-landing
+  namespace: team-blog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apps-landing
+  template:
+    metadata:
+      labels:
+        app: apps-landing
+        version: v1
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+# team-blog/docs: Reached through the ListenerSet in 30-listenerset.yaml.
+apiVersion: v1
+kind: Service
+metadata:
+  name: docs
+  namespace: team-blog
+spec:
+  selector:
+    app: docs
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docs
+  namespace: team-blog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: docs
+  template:
+    metadata:
+      labels:
+        app: docs
+        version: v1
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+# infra/status-page: Behind the internal Gateway.
+apiVersion: v1
+kind: Service
+metadata:
+  name: status-page
+  namespace: infra
+spec:
+  selector:
+    app: status-page
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: status-page
+  namespace: infra
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: status-page
+  template:
+    metadata:
+      labels:
+        app: status-page
+        version: v1
+    spec:
+      containers:
+        - name: echo
+          image: registry.k8s.io/gateway-api/echo-basic:v1.5.1
+          ports:
+            - containerPort: 3000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi

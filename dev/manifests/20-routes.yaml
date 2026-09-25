@@ -1,0 +1,370 @@
+# The routes, chosen so every state the plugin draws shows up at least once.
+#
+#   shop/storefront          the working shop: a 90/10 canary split on /api, a
+#                            header match that sends testers to the canary, a
+#                            prefix rewrite for /cart and a redirect for /old-shop
+#   shop/shop-https-redirect plain HTTP for shop.example.com, sent to HTTPS
+#   shop/payments            crosses into the payments namespace, allowed by the
+#                            ReferenceGrant at the bottom of this file
+#   shop/billing             crosses into billing with no ReferenceGrant: refused
+#   shop/recommendations     points at a Service that does not exist
+#   shop/search              points at a Service scaled to zero replicas
+#   shop/legacy              asks for the internal Gateway, which only takes
+#                            routes from its own namespace: not accepted
+#   shop/ghost               asks for a Gateway that does not exist: orphaned
+#   shop/checkout            a GRPCRoute, matched on the gRPC service
+#   shop/cache, shop/db      a TCPRoute and a TLSRoute
+#   team-blog/blog           an exact host under the wildcard listener
+#   team-blog/catch-all      no hostnames of its own: every other *.apps host
+#   infra/status             behind the internal Gateway, whose listeners conflict
+#
+# Try these in the plugin's "Where does this URL go?":
+#   https://shop.example.com/api/v1/items        the canary split
+#   https://shop.example.com/pay/checkout        into payments
+#   http://shop.example.com/                     the redirect to HTTPS
+#   https://blog.apps.example.com/               the exact host
+#   https://anything.apps.example.com/           the wildcard catch-all
+#   https://shop.example.com/billing             the refused cross-namespace ref
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: storefront
+  namespace: shop
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: https-shop
+  hostnames:
+    - shop.example.com
+  rules:
+    # Testers who send x-canary: true get version 2 for everything under /api.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+          headers:
+            - name: x-canary
+              value: "true"
+      backendRefs:
+        - name: storefront-canary
+          port: 80
+    # Everyone else: nine in ten to version 1, one in ten to version 2.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - name: x-shop-tier
+                value: api
+      backendRefs:
+        - name: storefront
+          port: 80
+          weight: 90
+        - name: storefront-canary
+          port: 80
+          weight: 10
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /cart
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: cart
+          port: 80
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /old-shop
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /
+            statusCode: 301
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            add:
+              - name: x-served-by
+                value: storefront
+      backendRefs:
+        - name: storefront
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: shop-https-redirect
+  namespace: shop
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: http
+  hostnames:
+    - shop.example.com
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: payments
+  namespace: shop
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: https-shop
+  hostnames:
+    - shop.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /pay
+      backendRefs:
+        - name: payments-api
+          namespace: payments
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: billing
+  namespace: shop
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: https-shop
+  hostnames:
+    - shop.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /billing
+      backendRefs:
+        - name: billing-api
+          namespace: billing
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: recommendations
+  namespace: shop
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: https-shop
+  hostnames:
+    - shop.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /recommendations
+      backendRefs:
+        - name: recommendations
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: search
+  namespace: shop
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: https-shop
+  hostnames:
+    - shop.example.com
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /search
+        - path:
+            type: PathPrefix
+            value: /search/
+      backendRefs:
+        - name: search
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: legacy
+  namespace: shop
+spec:
+  parentRefs:
+    - name: internal
+      namespace: infra
+  hostnames:
+    - legacy.internal.example.com
+  rules:
+    - backendRefs:
+        - name: storefront
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ghost
+  namespace: shop
+spec:
+  parentRefs:
+    - name: old-gateway
+      namespace: infra
+  hostnames:
+    - old.example.com
+  rules:
+    - backendRefs:
+        - name: storefront
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GRPCRoute
+metadata:
+  name: checkout
+  namespace: shop
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: grpc
+  hostnames:
+    - grpc.example.com
+  rules:
+    - matches:
+        - method:
+            service: checkout.v1.Checkout
+      backendRefs:
+        - name: checkout
+          port: 8080
+    - matches:
+        - method:
+            service: grpc.health.v1.Health
+            method: Check
+      backendRefs:
+        - name: checkout
+          port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: TCPRoute
+metadata:
+  name: cache
+  namespace: shop
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: tcp-cache
+  rules:
+    - backendRefs:
+        - name: cache
+          port: 6379
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: TLSRoute
+metadata:
+  name: db
+  namespace: shop
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: tls-db
+  hostnames:
+    - db.example.com
+  rules:
+    - backendRefs:
+        - name: db
+          port: 5432
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: blog
+  namespace: team-blog
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: https-apps
+  hostnames:
+    - blog.apps.example.com
+  rules:
+    - backendRefs:
+        - name: blog
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: catch-all
+  namespace: team-blog
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: https-apps
+  rules:
+    - backendRefs:
+        - name: apps-landing
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: status
+  namespace: infra
+spec:
+  parentRefs:
+    - name: internal
+  hostnames:
+    - status.internal.example.com
+  rules:
+    - backendRefs:
+        - name: status-page
+          port: 80
+---
+# Lets HTTPRoutes in shop send traffic to Services in payments. Without it
+# the payments route would be refused exactly like the billing one.
+apiVersion: gateway.networking.k8s.io/v1
+kind: ReferenceGrant
+metadata:
+  name: shop-routes
+  namespace: payments
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: shop
+  to:
+    - group: ""
+      kind: Service
+      name: payments-api

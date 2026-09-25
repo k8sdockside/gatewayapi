@@ -1,0 +1,166 @@
+# The gateways: one class, two Gateways, and the namespaces around them.
+#
+#   infra/public     the front door. Six listeners: plain HTTP, HTTPS for
+#                    shop.example.com, HTTPS for the wildcard *.apps.example.com,
+#                    an HTTP port only gRPC routes may use, TLS passthrough and TCP.
+#   infra/internal   a second Gateway that only takes routes from its own
+#                    namespace, with an HTTP and a TCP listener that collide
+#                    on port 80 on purpose.
+#
+# The EnvoyProxy object is Envoy Gateway's own and exists only because a kind
+# cluster has no load balancer: it asks for a ClusterIP Service, so the Gateway
+# gets an address and reports Programmed instead of waiting forever for an
+# external IP. Nothing in the plugin reads it.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infra
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+  labels:
+    # What the HTTPS listener for shop.example.com selects on.
+    gateway-access: public
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payments
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: billing
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-blog
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: kind-clusterip
+  namespace: infra
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: ClusterIP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: demo
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  description: Envoy Gateway, for the K8s Dockside Gateway API plugin demo.
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: kind-clusterip
+    namespace: infra
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public
+  namespace: infra
+spec:
+  gatewayClassName: demo
+  # Lets the ListenerSet in 30-listenerset.yaml add a listener from team-blog.
+  allowedListeners:
+    namespaces:
+      from: All
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https-shop
+      port: 443
+      protocol: HTTPS
+      hostname: shop.example.com
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: shop-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway-access: public
+    - name: https-apps
+      port: 443
+      protocol: HTTPS
+      hostname: "*.apps.example.com"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: apps-tls
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: grpc
+      port: 8080
+      protocol: HTTP
+      hostname: grpc.example.com
+      allowedRoutes:
+        namespaces:
+          from: All
+        kinds:
+          - kind: GRPCRoute
+    - name: tls-db
+      port: 8443
+      protocol: TLS
+      hostname: db.example.com
+      tls:
+        mode: Passthrough
+      allowedRoutes:
+        namespaces:
+          from: All
+        kinds:
+          - kind: TLSRoute
+    - name: tcp-cache
+      port: 6379
+      protocol: TCP
+      allowedRoutes:
+        namespaces:
+          from: All
+        kinds:
+          - kind: TCPRoute
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: internal
+  namespace: infra
+spec:
+  gatewayClassName: demo
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      hostname: "*.internal.example.com"
+      allowedRoutes:
+        namespaces:
+          from: Same
+    # TCP on the port the HTTP listener above already has. The CRD's own
+    # validation lets this in (the protocols differ), but the spec says
+    # listeners sharing a port with a TCP one are not distinct and must not
+    # be accepted: the controller marks them Conflicted, and the Problems
+    # page says which and why. (Two listeners with the same port, protocol
+    # and hostname would not get this far: the API server refuses them.)
+    - name: tcp-80
+      port: 80
+      protocol: TCP
+      allowedRoutes:
+        namespaces:
+          from: Same

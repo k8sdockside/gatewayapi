@@ -1,0 +1,73 @@
+{
+    "$schema": "https://raw.githubusercontent.com/k8sdockside/k8sdockside/main/docs/plugin.schema.json",
+    "id": "gatewayapi",
+    "name": "Gateway API",
+    "version": "1.0.0",
+    "minAppVersion": "0.1.12",
+    "tagline": "Where your traffic goes: Gateways, listeners, routes and backends, drawn as a map",
+    "icon": "route",
+    "logo": "logo.svg",
+    "category": "networking",
+    "docs": "https://gateway-api.sigs.k8s.io/",
+    "author": "K8s Dockside",
+    "authorUrl": "https://github.com/k8sdockside",
+    "links": [
+        { "label": "gateway-api.sigs.k8s.io", "url": "https://gateway-api.sigs.k8s.io/" },
+        { "label": "API reference", "url": "https://gateway-api.sigs.k8s.io/reference/spec/" },
+        { "label": "Implementations", "url": "https://gateway-api.sigs.k8s.io/implementations/" },
+        { "label": "GitHub", "url": "https://github.com/kubernetes-sigs/gateway-api" },
+        { "label": "Plugin source", "url": "https://github.com/k8sdockside/gatewayapi" }
+    ],
+    "description": "The Gateway API spreads one path through the cluster over a Gateway's listener, a route's parentRef, a rule's backendRef and the Service behind it, often in four namespaces. The app already lists each of those as a table; this plugin joins them up.\n\nThe Traffic map draws every path left to right, from Gateway to listener to route to Service and its ready endpoints, coloured by the conditions the controller wrote, with the weights of a canary split on the edges and a dashed red edge wherever the path breaks: a route its Gateway refused, a Gateway that does not exist, a Service that is not there, a namespace crossed without a ReferenceGrant. Where does this URL go? takes an address and runs it through the Gateway API's own matching rules, and shows the listener, the rule, what the filters do to the request and where it ends up. Problems says what is wrong in plain words and what to change.\n\nIt works with any implementation: it reads only the Gateway API's own objects, Services and EndpointSlices. Gateways, routes and Services each get a panel of their own. It only reads; it changes nothing in the cluster.",
+
+    "requires": [
+        { "kind": "gatewayclasses", "label": "Gateway classes" },
+        { "kind": "gateways", "label": "Gateways" },
+        { "kind": "httproutes", "label": "HTTP routes" },
+        { "kind": "grpcroutes", "label": "gRPC routes", "optional": true },
+        { "kind": "referencegrants", "label": "Reference grants", "optional": true },
+        { "kind": "listenersets", "label": "Listener sets", "optional": true },
+        { "kind": "tlsroutes", "label": "TLS routes", "optional": true },
+        { "kind": "tcproutes", "label": "TCP routes", "optional": true },
+        { "kind": "udproutes", "label": "UDP routes", "optional": true },
+        { "kind": "backendtlspolicies", "label": "Backend TLS policies", "optional": true }
+    ],
+
+    "overview": { "entry": "overview.html" },
+
+    "views": [
+        { "id": "map", "label": "Traffic map", "icon": "graph", "type": "custom", "entry": "map.html" },
+        { "id": "resolve", "label": "Where does this URL go?", "icon": "search", "type": "custom", "entry": "resolve.html" },
+        { "id": "problems", "label": "Problems", "icon": "alert", "type": "custom", "entry": "problems.html" }
+    ],
+
+    "cards": [
+        {
+            "label": "Gateways programmed",
+            "kind": "gateways",
+            "groupBy": "status.conditions[Programmed]",
+            "tones": { "True": "ok", "False": "error", "Unknown": "warn" }
+        },
+        {
+            "label": "Gateway classes accepted",
+            "kind": "gatewayclasses",
+            "groupBy": "status.conditions[Accepted]",
+            "tones": { "True": "ok", "False": "error", "Unknown": "warn" }
+        }
+    ],
+
+    "sections": [
+        { "id": "gateway-map", "label": "Listeners and routes", "kind": "gateways", "entry": "gateway.html", "height": 420 },
+        { "id": "httproute-traffic", "label": "Where this route goes", "kind": "httproutes", "entry": "route.html", "height": 320 },
+        { "id": "grpcroute-traffic", "label": "Where this route goes", "kind": "grpcroutes", "entry": "route.html", "height": 260 },
+        { "id": "tlsroute-traffic", "label": "Where this route goes", "kind": "tlsroutes", "entry": "route.html", "height": 200 },
+        { "id": "tcproute-traffic", "label": "Where this route goes", "kind": "tcproutes", "entry": "route.html", "height": 200 },
+        { "id": "udproute-traffic", "label": "Where this route goes", "kind": "udproutes", "entry": "route.html", "height": 200 },
+        { "id": "service-routes", "label": "Routes that send traffic here", "kind": "services", "entry": "service.html", "height": 160 }
+    ],
+
+    "ui": {
+        "kinds": ["services", "endpointslices", "namespaces"],
+        "write": false
+    }
+}

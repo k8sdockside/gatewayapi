@@ -1,0 +1,43 @@
+# A ListenerSet: a listener for docs.example.com added to infra/public from
+# the team-blog namespace, without anyone editing the Gateway itself. The
+# Gateway allows it with spec.allowedListeners (see 00-gateways.yaml).
+#
+# ListenerSet reached the standard channel in Gateway API v1.5. If your
+# implementation does not support it yet, the ListenerSet is left without an
+# Accepted condition and the docs route shows up as not attached -- which the
+# plugin draws, too.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: team-docs
+  namespace: team-blog
+spec:
+  parentRef:
+    name: public
+    namespace: infra
+  listeners:
+    - name: docs-http
+      port: 80
+      protocol: HTTP
+      hostname: docs.example.com
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: docs
+  namespace: team-blog
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: ListenerSet
+      name: team-docs
+  hostnames:
+    - docs.example.com
+  rules:
+    - backendRefs:
+        - name: docs
+          port: 80

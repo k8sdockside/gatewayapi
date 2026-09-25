@@ -1,0 +1,30 @@
+{
+    "name": "k8sdockside-gatewayapi-plugin",
+    "version": "1.0.0",
+    "private": true,
+    "description": "The Gateway API plugin for K8s Dockside: a traffic map, a URL resolver and plain-words problems for any Gateway API implementation.",
+    "license": "Apache-2.0",
+    "author": "K8s Dockside",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/k8sdockside/gatewayapi"
+    },
+    "type": "module",
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "build": "node scripts/build.mjs",
+        "watch": "node scripts/build.mjs --watch",
+        "preview": "node scripts/preview.mjs",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "check": "npm run typecheck && npm run test && node scripts/build.mjs --check"
+    },
+    "devDependencies": {
+        "esbuild": "0.28.2",
+        "happy-dom": "^20.0.0",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.11"
+    }
+}
