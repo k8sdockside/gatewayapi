@@ -11,6 +11,9 @@ import { load, remember, start } from '../ui/page.js';
 import { backendRow, backendSplit } from '../ui/backends.js';
 import { code, dot, nothing, openName, pill } from '../ui/parts.js';
 
+// The app's folding sections; there from 0.1.35, this plugin's minAppVersion.
+const ui = k8sdockside.ui!;
+
 start('panel', async (ctx) => {
     const host = byId('panel');
     const me = ctx.object;
@@ -55,11 +58,14 @@ function attachedTo(r: RouteView): HTMLElement {
         );
         if (tone === 'error' || tone === 'warn') list.append(el('li', { class: 'parent-why' }, p.specWhy || p.message || p.reason));
     }
-    return el('div', { class: 'panel-section' }, el('h3', {}, 'Attached to'), list);
+    const section = ui.section({ id: 'attached', title: 'Attached to', count: r.parents.length, what: 'where it is attached' });
+    section.body.append(list);
+    return section.root;
 }
 
 function rules(r: RouteView): HTMLElement {
-    const out = el('div', { class: 'panel-section' }, el('h3', {}, r.hostnames.length ? `Rules, for ${r.hostnames.join(', ')}` : 'Rules'));
+    const section = ui.section({ id: 'rules', title: r.hostnames.length ? `Rules, for ${r.hostnames.join(', ')}` : 'Rules', count: r.rules.length, what: 'the rules' });
+    const out = section.body;
     if (r.rules.length === 0) out.append(nothing('No rules.'));
     for (const rule of r.rules) {
         const live = rule.backends.filter((b) => b.weight > 0);
@@ -74,7 +80,7 @@ function rules(r: RouteView): HTMLElement {
             ),
         );
     }
-    return out;
+    return section.root;
 }
 
 function filterPill(f: Parameters<typeof filterWords>[0]): HTMLElement {

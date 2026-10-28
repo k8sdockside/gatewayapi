@@ -56,6 +56,27 @@ function bridge(lists: Lists, object: K8sDockside.SectionObject | null = null, s
         edit: async () => null,
         logs: async () => null,
         on: () => () => {},
+        ui: { section },
+    };
+}
+
+/** Enough of the SDK's ui.section for the pages to draw into: a heading and a body. */
+function section(options: K8sDockside.SectionOptions): K8sDockside.Section {
+    const root = document.createElement('section');
+    const heading = document.createElement('h3');
+    heading.textContent = options.title;
+    const actions = document.createElement('div');
+    const body = document.createElement('div');
+    root.append(heading, actions, body);
+    return {
+        root,
+        body,
+        actions,
+        setTitle: (title) => void (heading.textContent = title),
+        setCount: () => {},
+        isFolded: () => false,
+        setFolded: () => {},
+        onToggle: () => () => {},
     };
 }
 

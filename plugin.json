@@ -3,7 +3,7 @@
     "id": "gatewayapi",
     "name": "Gateway API",
     "version": "1.0.0",
-    "minAppVersion": "0.1.12",
+    "minAppVersion": "0.1.36",
     "tagline": "Where your traffic goes: Gateways, listeners, routes and backends, drawn as a map",
     "icon": "route",
     "logo": "logo.svg",

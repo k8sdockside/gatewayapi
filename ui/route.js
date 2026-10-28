@@ -851,6 +851,7 @@
   }
 
   // src/pages/route.ts
+  var ui = k8sdockside.ui;
   start("panel", async (ctx) => {
     const host = byId("panel");
     const me = ctx.object;
@@ -893,10 +894,13 @@
       );
       if (tone === "error" || tone === "warn") list.append(el("li", { class: "parent-why" }, p.specWhy || p.message || p.reason));
     }
-    return el("div", { class: "panel-section" }, el("h3", {}, "Attached to"), list);
+    const section = ui.section({ id: "attached", title: "Attached to", count: r.parents.length, what: "where it is attached" });
+    section.body.append(list);
+    return section.root;
   }
   function rules(r) {
-    const out = el("div", { class: "panel-section" }, el("h3", {}, r.hostnames.length ? `Rules, for ${r.hostnames.join(", ")}` : "Rules"));
+    const section = ui.section({ id: "rules", title: r.hostnames.length ? `Rules, for ${r.hostnames.join(", ")}` : "Rules", count: r.rules.length, what: "the rules" });
+    const out = section.body;
     if (r.rules.length === 0) out.append(nothing("No rules."));
     for (const rule of r.rules) {
       const live = rule.backends.filter((b) => b.weight > 0);
@@ -911,7 +915,7 @@
         )
       );
     }
-    return out;
+    return section.root;
   }
   function filterPill(f) {
     const w = filterWords(f);
